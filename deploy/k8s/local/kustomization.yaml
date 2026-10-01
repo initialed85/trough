@@ -1,0 +1,38 @@
+# Local overlay for Docker Desktop or colima (k3s on the docker runtime): the steward
+# image is built locally and never pulled, Ergo is exposed on a LoadBalancer (both
+# expose those on the host), account registration is open, and the steward password is
+# a throwaway literal. NOT for a shared cluster; see deploy/README.md.
+#
+#   docker build -t trough-steward:dev .
+#   kubectl --context docker-desktop apply -k deploy/k8s/local   # or --context colima
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: trough
+resources:
+  - ../base
+secretGenerator:
+  - name: trough-steward
+    literals:
+      - password=local-dev-steward-password
+generatorOptions:
+  disableNameSuffixHash: true
+patches:
+  - target:
+      kind: Service
+      name: ergo
+    patch: |-
+      - op: add
+        path: /spec/type
+        value: LoadBalancer
+  - target:
+      kind: Deployment
+      name: steward
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: TROUGH_STEWARD_REGISTER
+          value: "1"

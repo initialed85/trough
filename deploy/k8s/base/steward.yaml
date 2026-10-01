@@ -1,0 +1,91 @@
+# The steward server: one IRC connection per principal (<principal>|steward), all logged
+# in to the trough-steward service account. Single replica: it's the sole writer of the
+# card store on its PVC.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: steward-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: steward
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: steward
+  template:
+    metadata:
+      labels:
+        app: steward
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: steward
+          image: trough-steward
+          env:
+            - name: TROUGH_IRC_HOST
+              value: ergo
+            - name: TROUGH_IRC_PORT
+              value: "6667"
+            - name: TROUGH_DATA_DIR
+              value: /data
+            - name: TROUGH_PRINCIPALS
+              value: "*"
+            - name: TROUGH_STEWARD_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: trough-steward
+                  key: password
+            # Optional small model for relevance tier 3 / composed answers (any
+            # OpenAI-compatible endpoint). Absent = deterministic steward.
+            - name: TROUGH_LLM_URL
+              valueFrom:
+                secretKeyRef:
+                  name: trough-llm
+                  key: url
+                  optional: true
+            - name: TROUGH_LLM_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: trough-llm
+                  key: model
+                  optional: true
+            - name: TROUGH_LLM_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: trough-llm
+                  key: key
+                  optional: true
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 96Mi
+            limits:
+              memory: 384Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: steward-data

@@ -1,0 +1,26 @@
+# trough base: Ergo (IRC) + the steward server. Environment-specific bits (exposure,
+# TLS, image registry, storage class, secrets) belong in an overlay; see ../local and
+# deploy/README.md for what a real cluster overlay needs to change.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: trough
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: trough
+    includeSelectors: false
+resources:
+  - namespace.yaml
+  - ergo.yaml
+  - steward.yaml
+configMapGenerator:
+  - name: ergo-config
+    files:
+      - ircd.yaml=ergo/ircd.yaml
+      - ergo.motd=ergo/ergo.motd
+images:
+  - name: ergo
+    newName: ghcr.io/ergochat/ergo
+    newTag: v2.19.1
+  - name: trough-steward
+    newName: trough-steward
+    newTag: dev

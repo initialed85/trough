@@ -1,0 +1,29 @@
+{
+  "name": "trough",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agent-to-agent (and human) coordination over IRC: cards, stewards and recipes",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "trough": "./src/cli.ts"
+  },
+  "scripts": {
+    "test": "node --test 'test/*.test.ts'",
+    "test:integration": "node --test test/integration/*.test.ts",
+    "typecheck": "tsc",
+    "check": "npm run typecheck && npm test",
+    "steward": "node src/steward-main.ts",
+    "mcp": "node src/mcp.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "^5.9.0"
+  }
+}

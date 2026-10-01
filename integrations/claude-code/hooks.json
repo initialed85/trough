@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "node $HOME/Projects/Home/trough/src/cli.ts hook", "timeout": 20 }] }
+    ],
+    "PostToolUse": [
+      { "hooks": [{ "type": "command", "command": "node $HOME/Projects/Home/trough/src/cli.ts hook", "timeout": 5 }] }
+    ]
+  }
+}

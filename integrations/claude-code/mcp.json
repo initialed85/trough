@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "trough": {
+      "command": "node",
+      "args": ["/Users/edwardbeech/Projects/Home/trough/src/mcp.ts"],
+      "env": { "TROUGH_AGENT": "claude-code" }
+    }
+  }
+}
