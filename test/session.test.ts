@@ -74,3 +74,29 @@ test("🐈 ends an exchange: never injected, never answered; long threads stop r
   s.reply("q1", "sure");
   assert.ok(lines.some((l) => l.includes("PRIVMSG dan|cc-1")));
 });
+
+test("peek doesn't consume the inject queue; the status segment reflects it", async () => {
+  const { peek, statusSegment } = await import("../src/local.ts");
+  const s = session();
+  deliver(s, { kind: "steer", id: "p1", text: "look at this" });
+  const p = peek(s);
+  assert.equal(p.waiting, 1);
+  assert.match(statusSegment(p), /⚑1 steer/);
+  assert.equal(s.drainInject().length, 1, "still there after peek");
+  assert.doesNotMatch(statusSegment(peek(s)), /⚑/);
+});
+
+test("attaching to a card joins its channel; shared updates are mirrored there", async () => {
+  const s = session();
+  const lines: string[] = [];
+  (s.irc as unknown as { send(l: string): void }).send = (l: string) => lines.push(l);
+  const joined: string[] = [];
+  s.irc.join = (ch: string) => void joined.push(ch);
+  (s as unknown as { onAck(id: string, r: Partial<Received>): void }).onAck("x", { data: { card: "c-abc123" } } as unknown as Received);
+  assert.deepEqual(joined, ["#ed-c-abc123"]);
+  s.shared = true;
+  lines.length = 0;
+  void s.update("switched to the v2 path", "c-abc123");
+  assert.ok(lines.some((l) => l.includes("PRIVMSG #trough")));
+  assert.ok(lines.some((l) => l.includes("PRIVMSG #ed-c-abc123")));
+});

@@ -34,6 +34,8 @@ cfg["lock-file"] = "/ircd/ircd.lock"
 cfg["languages"]["path"] = "/ircd-bin/languages"
 # Bump history so CHATHISTORY catch-up covers a working day of #trough.
 cfg["history"]["channel-length"] = 4096
+# Lets a session delete its own lobby messages on /trough unshare (HistServ DELETE <msgid>).
+cfg["history"]["retention"]["allow-individual-delete"] = True
 # The stock oper password hash is a placeholder nobody knows, i.e. opers are disabled.
 # Set one with `ergo genpasswd` if you need /OPER (e.g. NickServ SAREGISTER on closed servers).
 

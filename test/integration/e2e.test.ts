@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { register } from "../../src/account.ts";
 import type { ClientConfig } from "../../src/config.ts";
-import { callLocal, serveSession } from "../../src/local.ts";
+import { callLocal, runCommand, serveSession } from "../../src/local.ts";
 import { Session } from "../../src/session.ts";
 
 const [host, port] = (process.env.TROUGH_TEST_IRC ?? "127.0.0.1:16667").split(":");
@@ -104,7 +104,9 @@ test("full flow: checkpoint, recall, ask/forward/reply, catchup, unshare, hook b
   assert.match((await callLocal(sock, { op: "command", line: "sharing" })).text, /shared/);
   stop();
 
-  assert.match((await a.control("unshare"))?.text ?? "", /now private/);
+  const unshared = await runCommand(a, "unshare");
+  assert.match(unshared, /now private/);
+  assert.match(unshared, /Deleted [1-9]\d* of this session's lobby message/);
   const hidden = await b.recall(ed, { text: "ECW black collar" });
   assert.match(hidden?.text ?? "", /Not in anything/);
 });

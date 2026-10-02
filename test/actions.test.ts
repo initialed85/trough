@@ -20,7 +20,7 @@ function fakeSession() {
 }
 
 test("shared tool actions exclude human-only sharing controls", () => {
-  assert.deepEqual(ACTIONS, ["status", "focus", "checkpoint", "update", "recall", "catchup", "ask", "reply", "steer", "delegate", "inbox", "dismiss"]);
+  assert.deepEqual(ACTIONS, ["status", "focus", "checkpoint", "update", "recall", "recipes", "catchup", "ask", "reply", "steer", "delegate", "inbox", "dismiss"]);
   assert.equal((ACTIONS as readonly string[]).includes("share"), false);
   assert.equal((ACTIONS as readonly string[]).includes("unshare"), false);
 });

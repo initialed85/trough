@@ -74,6 +74,11 @@ export function parseNick(nick: string): Nick | undefined {
   return { principal, handle };
 }
 
+/** A card's own channel, for watching or working alongside it: #ed-c-uhl44p. */
+export function cardChannel(owner: string, card: string): string {
+  return `#${owner}-${card}`.toLowerCase();
+}
+
 export function stewardNick(principal: string): string {
   return formatNick(principal, STEWARD_HANDLE);
 }

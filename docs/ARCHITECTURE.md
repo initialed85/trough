@@ -85,10 +85,17 @@ sit beside them. `PrincipalStore.view(id, audience)` folds events into a `Card`:
 
 ## Gaps (known, not bugs)
 
-- **Card channels** (`#c-<id>`) aren't used yet; updates from shared sessions go to `#trough`.
-- **Codex** has no mid-turn delivery; it sees inject-level items in its next `trough` tool result.
-- **IRC history purge on unshare** isn't done (Ergo's `allow-individual-delete` is off).
-- **Steward as an agent**: the steward is deterministic; it uses a model only when `TROUGH_LLM_URL` is set,
-  and doesn't yet default to "the cheapest model the agent supports".
+- **Card channels** (`#<owner>-<card>`) are joined by attached sessions and get shared updates mirrored in,
+  but the steward doesn't set their topic yet (it would need ChanServ-registered channels to keep op).
+- **Codex hooks** are documented (`integrations/codex/README.md`) but not yet tested in a live session; two
+  Codex sessions in one directory are indistinguishable to the hook.
+- **History purge on unshare** deletes the session's own channel messages sent since it connected (HistServ
+  `DELETE`). Messages from an earlier connection of the same session, and anything people already read,
+  stay.
+- **Steward model**: deterministic by default; a model is used only when `TROUGH_LLM_URL` is set. The doc's
+  "cheapest model the agent supports" default doesn't apply because the steward isn't an agent.
+- **Recipe index** is a federated search (`trough` action=recipes asks every steward on the trough); there's
+  no separate promoted index.
 - **Dismissal learning** across cards is a stretch goal; dismissals are recorded per card.
-- **Recipe index**: recipes live on cards and are found via recall; there's no separate promoted index yet.
+- **Steers to sessions that have gone** are rerouted via the steward (see the flows table); a message to a
+  session that was never there at all gets the same "not delivered".

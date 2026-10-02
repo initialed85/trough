@@ -10,7 +10,7 @@ import type { ClientConfig } from "./config.ts";
 import { troughHome } from "./config.ts";
 import { classify, isDone, type Level, type Plain } from "./delivery.ts";
 import { IrcClient } from "./irc.ts";
-import { Assembler, LOBBY, MAX_TEXT, encodeEnvelope, formatNick, newId, parseNick, stewardNick, type Envelope, type Hello, type Received, type Ref } from "./protocol.ts";
+import { Assembler, LOBBY, cardChannel, MAX_TEXT, encodeEnvelope, formatNick, newId, parseNick, stewardNick, type Envelope, type Hello, type Received, type Ref } from "./protocol.ts";
 import { scrub, scrubDeep } from "./scrub.ts";
 import { Wal } from "./wal.ts";
 
@@ -66,6 +66,8 @@ export class Session extends EventEmitter {
   /** Nicks present in #trough per NAMES/JOIN/PART/QUIT, so the roster isn't empty until the next hello round. */
   private present = new Set<string>();
   private directSends = new Map<string, { target: string; env: Envelope; at: number }>();
+  /** msgids of our own channel messages (server echoes), so unshare can delete them from history. */
+  private ownChannelMsgids: { target: string; msgid: string }[] = [];
 
   constructor(opts: SessionOptions) {
     super();
@@ -88,6 +90,11 @@ export class Session extends EventEmitter {
     this.irc.on("message", (m) => {
       this.trackPresence(m.command, (m.prefix ?? "").split("!")[0] ?? "", m.params);
       if (m.command === "401" && m.params[1]) this.onNoSuchNick(m.params[1]);
+      const from = (m.prefix ?? "").split("!")[0]?.toLowerCase();
+      if ((m.command === "PRIVMSG" || m.command === "TAGMSG") && from === this.irc.nick.toLowerCase() && m.params[0]?.startsWith("#") && m.tags.msgid) {
+        this.ownChannelMsgids.push({ target: m.params[0], msgid: m.tags.msgid });
+        if (this.ownChannelMsgids.length > 2000) this.ownChannelMsgids.splice(0, 1000);
+      }
       const r = this.asm.push(m);
       if (r) this.onReceived(r as Received | Plain);
     });
@@ -200,7 +207,12 @@ export class Session extends EventEmitter {
     const clean = scrub(text).slice(0, MAX_TEXT);
     const env: Envelope = { kind: "update", id: newId(), card, text: clean, data: refs?.length ? { refs: scrubDeep(refs) } : undefined };
     this.wal.append(this.steward, env);
-    if (this.shared) this.send(LOBBY, { ...env, id: newId() });
+    if (this.shared) {
+      // The lobby is the bus stewards watch for relevance; the card channel is where people
+      // (and agents) watching that card see it. Separate ids: envelopes reassemble per id.
+      this.send(LOBBY, { ...env, id: newId() });
+      if (card && this.cards.has(card)) this.send(cardChannel(this.principal, card), { ...env, id: newId() });
+    }
     const ack = await this.request(this.steward, env);
     this.onAck(env.id, ack);
     return ack;
@@ -212,6 +224,7 @@ export class Session extends EventEmitter {
     const card = ack.data?.card;
     if (typeof card === "string" && !this.cards.has(card)) {
       this.cards.add(card);
+      this.irc.join(cardChannel(this.principal, card));
       this.hello();
     }
   }
@@ -255,7 +268,7 @@ export class Session extends EventEmitter {
     }
   }
 
-  recall(principal: string | undefined, query: { text?: string; refs?: Ref[]; card?: string; since?: string }): Promise<Received | undefined> {
+  recall(principal: string | undefined, query: { text?: string; refs?: Ref[]; card?: string; since?: string; recipes?: boolean }): Promise<Received | undefined> {
     const target = stewardNick(principal ?? this.principal);
     return this.request(target, { kind: "recall", id: newId(), text: query.text ? scrub(query.text).slice(0, MAX_TEXT) : undefined, data: scrubDeep({ ...query }) }, 10_000);
   }
@@ -315,6 +328,22 @@ export class Session extends EventEmitter {
     }
     this.drawer.push(item);
     if (this.drawer.length > DRAWER_MAX) this.drawer.splice(0, this.drawer.length - DRAWER_MAX);
+  }
+
+  /**
+   * Delete this session's own channel messages from the server's history (Ergo HistServ;
+   * needs history.retention.allow-individual-delete). Part of /trough unshare. Can't reach
+   * what others already saw, and only covers messages sent since this session connected.
+   */
+  purgeChannelHistory(): number {
+    const n = this.ownChannelMsgids.length;
+    for (const { target, msgid } of this.ownChannelMsgids.splice(0)) this.irc.send(`PRIVMSG HistServ :DELETE ${target} ${msgid}`);
+    return n;
+  }
+
+  /** Look at what's queued for the model without taking it. */
+  peekInject(): readonly Item[] {
+    return this.inject;
   }
 
   /** Take everything queued for the model's transcript. */

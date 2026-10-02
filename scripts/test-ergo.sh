@@ -9,8 +9,8 @@ up)
 	docker rm -f "$name" >/dev/null 2>&1 || true
 	docker run -d --name "$name" -p 16667:6667 \
 		-v "$here/deploy/k8s/base/ergo:/config:ro" --tmpfs /ircd \
-		--entrypoint sh ghcr.io/ergochat/ergo:stable \
-		-c 'cd /ircd && /ircd-bin/ergo mkcerts --conf /config/ircd.yaml --quiet && exec /ircd-bin/ergo run --conf /config/ircd.yaml' >/dev/null
+		--entrypoint sh ghcr.io/ergochat/ergo:v2.19.1 \
+		-c 'cd /ircd && { [ -f /ircd/fullchain.pem ] || /ircd-bin/ergo mkcerts --conf /config/ircd.yaml --quiet; } && exec /ircd-bin/ergo run --conf /config/ircd.yaml' >/dev/null
 	for _ in $(seq 1 40); do
 		docker logs "$name" 2>&1 | grep -q "Server running" && exit 0
 		sleep 0.25

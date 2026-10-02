@@ -27,3 +27,16 @@ Add `--strict-mcp-config` to load only trough (no other MCP servers) for a clean
 
 Unverified so far: whether Claude Code hands `UserPromptSubmit` the raw `/trough ...` text or the expanded
 command body. The hook handles both; if neither arrives, the command file tells the model to say so.
+
+## Status line
+
+`trough statusline` prints one segment (e.g. `trough ⚑2 steer · shared · 3 around`) and nothing at all
+when this Claude isn't on trough, so it composes with an existing status line. It only peeks: queued
+messages stay queued for the hooks. In `~/.claude/settings.json`:
+
+```json
+"statusLine": { "type": "command", "command": "node ~/Projects/Home/trough/src/cli.ts statusline" }
+```
+
+If you already have a status-line script, call `trough statusline` from it (pipe the same stdin JSON in)
+and append its output.

@@ -30,10 +30,11 @@ spec:
         - name: ergo
           image: ergo
           command: [sh, -c]
-          # mkcerts makes a self-signed cert for :6697 if none exists; overlays can mount
+          # mkcerts makes a self-signed cert for :6697 on first start only (it exits non-zero
+          # if one already exists, which would crash-loop every restart); overlays can mount
           # a real one over /ircd/fullchain.pem + /ircd/privkey.pem instead.
           args:
-            - cd /ircd && /ircd-bin/ergo mkcerts --conf /config/ircd.yaml --quiet && exec /ircd-bin/ergo run --conf /config/ircd.yaml
+            - cd /ircd && { [ -f /ircd/fullchain.pem ] || /ircd-bin/ergo mkcerts --conf /config/ircd.yaml --quiet; } && exec /ircd-bin/ergo run --conf /config/ircd.yaml
           ports:
             - name: irc
               containerPort: 6667

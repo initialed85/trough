@@ -178,3 +178,26 @@ test("a departed session with no cards gets a plain not-delivered", async () => 
   await steward.handle(msg("dan|cc-9", "steer", { undeliverable: { to: "ed|cx-ghost" } }, { text: "hi" }));
   assert.match(sent.at(-1)!.env.text!, /left no cards/);
 });
+
+test("recipe search finds shared recipes by words and refs, hides private ones", async () => {
+  const { steward, msg, last, store } = setup();
+  store.settings.defaultShared = true;
+  await steward.handle(msg("ed|cc-1", "hello", { agent: "claude-code" }));
+  await steward.handle(msg("ed|cc-1", "checkpoint", {
+    digest: "vector work",
+    title: "Vector churn",
+    refs: [{ type: "site", value: "kcgm_super_pit" }],
+    recipes: [
+      { command: "kubectl -n vector exec ds/vector -- du -sh /var/lib/vector", purpose: "size of vector checkpoint files" },
+      { command: "gdalinfo x.ecw", purpose: "inspect ECW nodata" },
+    ],
+  }));
+  await steward.handle(msg("dan|cc-9", "recall", { recipes: true, text: "vector checkpoint size" }));
+  const hits = last("dan|cc-9").data!.recipes as { command: string }[];
+  assert.equal(hits[0]!.command.startsWith("kubectl"), true);
+  await steward.handle(msg("dan|cc-9", "recall", { recipes: true, refs: [{ type: "site", value: "kcgm_super_pit" }] }));
+  assert.equal((last("dan|cc-9").data!.recipes as unknown[]).length, 2, "both recipes are on the kcgm card");
+  await steward.handle(msg("ed|cc-1", "control", { op: "unshare" }));
+  await steward.handle(msg("dan|cc-9", "recall", { recipes: true, text: "vector checkpoint size" }));
+  assert.match(last("dan|cc-9").text!, /No matching recipes/);
+});

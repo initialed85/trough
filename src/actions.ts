@@ -1,8 +1,21 @@
 // Shared trough tool actions for MCP clients and in-process integrations such as Pi.
-import type { Received, Ref } from "./protocol.ts";
+import { cardChannel, type Received, type Ref } from "./protocol.ts";
 import type { Session } from "./session.ts";
 
-export const ACTIONS = ["status", "focus", "checkpoint", "update", "recall", "catchup", "ask", "reply", "steer", "delegate", "inbox", "dismiss"] as const;
+export const ACTIONS = ["status", "focus", "checkpoint", "update", "recall", "recipes", "catchup", "ask", "reply", "steer", "delegate", "inbox", "dismiss"] as const;
+
+interface RecipeHit {
+  command: string;
+  purpose: string;
+  preconditions?: string;
+  output?: string;
+  gotchas?: string;
+  verified?: string;
+  danger?: boolean;
+  card: string;
+  cardTitle: string;
+  score: number;
+}
 
 export interface Args {
   action: (typeof ACTIONS)[number];
@@ -48,7 +61,7 @@ interface CardLike {
 
 function renderCard(c: CardLike): string {
   const text = (x: { text: string } | string) => (typeof x === "string" ? x : x.text);
-  const lines = [`## ${c.id ?? c.card} · ${c.title} [${c.kind ?? "task"}, ${c.status ?? "active"}]${c.owner ? ` · ${c.owner}` : ""}${c.live?.length ? ` · live: ${c.live.join(", ")}` : ""}`];
+  const lines = [`## ${c.id ?? c.card} · ${c.title} [${c.kind ?? "task"}, ${c.status ?? "active"}]${c.owner ? ` · ${c.owner}` : ""}${c.live?.length ? ` · live: ${c.live.join(", ")}` : ""}${c.owner && (c.id ?? c.card) ? ` · ${cardChannel(c.owner, (c.id ?? c.card)!)}` : ""}`];
   if (c.refs?.length) lines.push(`refs: ${c.refs.map((r) => `${r.type}:${r.value}`).join(", ")}`);
   const summary = c.summary ?? c.latest;
   if (summary) lines.push(summary.length > 1200 ? `${summary.slice(0, 1200)}...` : summary);
@@ -99,6 +112,18 @@ export async function runAction(s: Session, a: Args): Promise<string> {
     }
     case "recall":
       return format(await s.recall(a.principal, { text: a.text, refs: a.refs, card: a.card }), `No answer from ${a.principal ?? s.principal}|steward.`);
+    case "recipes": {
+      // One principal if named, else everyone on the trough right now plus ourselves.
+      const people = a.principal ? [a.principal] : [...new Set([s.principal, ...s.roster().map((r) => r.nick.split("|")[0]!)])];
+      const answers = await Promise.all(people.map((p) => s.recall(p, { text: a.text, refs: a.refs, recipes: true })));
+      const hits = answers.flatMap((r) => ((r?.data?.recipes as RecipeHit[] | undefined) ?? []).map((h) => ({ ...h, principal: r!.data!.principal as string })));
+      if (!hits.length) return `No matching recipes from ${people.join(", ")}.`;
+      return hits
+        .sort((x, y) => y.score - x.score)
+        .slice(0, 10)
+        .map((h) => `- \`${h.command}\` - ${h.purpose} (${h.principal}, ${h.card} ${h.cardTitle})${h.preconditions ? `\n  needs: ${h.preconditions}` : ""}${h.gotchas ? `\n  gotcha: ${h.gotchas}` : ""}${h.output ? `\n  output: ${h.output.slice(0, 300)}` : ""}${h.verified ? `\n  verified: ${h.verified}` : ""}${h.danger ? "\n  DANGER: changes things; never run without the human's say-so" : ""}`)
+        .join("\n");
+    }
     case "catchup":
       return format(await s.recall(a.principal, { since: a.since ?? "1d" }), `No answer from ${a.principal ?? s.principal}|steward.`);
     case "ask":

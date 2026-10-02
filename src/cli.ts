@@ -85,6 +85,24 @@ async function main(): Promise<boolean | void> {
     if (out) process.stdout.write(out);
     return;
   }
+  if (cmd === "statusline") {
+    // Claude Code status line (reads its JSON on stdin, prints one line). Silent when this
+    // agent isn't on trough, so it composes with other status-line scripts.
+    let input = "";
+    if (!process.stdin.isTTY) for await (const chunk of process.stdin) input += chunk;
+    let cwd: string | undefined;
+    try {
+      cwd = (JSON.parse(input) as { cwd?: string; workspace?: { current_dir?: string } }).workspace?.current_dir ?? JSON.parse(input).cwd;
+    } catch {
+      // not JSON: fine
+    }
+    const { findSocket: find, callLocal: call, statusSegment } = await import("./local.ts");
+    const sock = find(cwd);
+    if (!sock) return;
+    const res = await call(sock, { op: "peek" }, 1_500).catch(() => undefined);
+    if (res?.data) process.stdout.write(statusSegment(res.data as Parameters<typeof statusSegment>[0]));
+    return;
+  }
   if (cmd === "help" || cmd === "--help") {
     console.log(`${HELP.replaceAll("/trough", "trough")}\n  trough init\n  trough checkpoint --digest "..." [--card id] [--ref type=value]\n  trough update "text" [--card id]`);
     return;
@@ -105,7 +123,7 @@ async function main(): Promise<boolean | void> {
     return;
   }
   const named = flag("session");
-  const socket = named ? liveRegistrations().find((r) => r.nick === named.toLowerCase())?.socket : findSocket();
+  const socket = named ? liveRegistrations().find((r) => r.nick === named.toLowerCase())?.socket : findSocket(process.cwd(), { loneFallback: true });
   if (cmd === "checkpoint" || cmd === "update") {
     const refs = flags("ref").map((r) => {
       const [type, ...v] = r.split("=");

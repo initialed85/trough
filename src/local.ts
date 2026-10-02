@@ -8,7 +8,9 @@
 //      Claude Code, which spawns MCP servers itself.
 //   3. Working directory: Codex spawns MCP servers from a shared app-server daemon, so
 //      ancestry doesn't connect them; match the newest live session started in this cwd.
-//   4. The only live session, if there's exactly one.
+//   4. The only live session, if there's exactly one, and only when the caller is a human at
+//      the CLI (`loneFallback`). Never for hooks/status lines: an unrelated agent would
+//      otherwise drain another session's messages.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
@@ -99,7 +101,7 @@ function notShellUntil(): (pid: number) => boolean {
   };
 }
 
-export function findSocket(cwd = process.cwd()): string | undefined {
+export function findSocket(cwd = process.cwd(), opts: { loneFallback?: boolean } = {}): string | undefined {
   if (process.env.TROUGH_SESSION_SOCKET) return process.env.TROUGH_SESSION_SOCKET;
   for (const pid of ancestors(process.ppid, 8)) {
     const p = join(runDir(), `${pid}.sock`);
@@ -108,7 +110,7 @@ export function findSocket(cwd = process.cwd()): string | undefined {
   const live = liveRegistrations();
   const here = live.find((r) => r.cwd === cwd) ?? live.find((r) => cwd.startsWith(`${r.cwd}/`));
   if (here) return here.socket;
-  return live.length === 1 ? live[0]!.socket : undefined;
+  return opts.loneFallback && live.length === 1 ? live[0]!.socket : undefined;
 }
 
 /** Serve the session on a socket; returns a cleanup function. */
@@ -200,6 +202,30 @@ export async function callLocal(socket: string, req: Record<string, unknown>, ti
   });
 }
 
+export interface Peek {
+  nick: string;
+  connected: boolean;
+  shared?: boolean;
+  waiting: number;
+  kinds: string[];
+  cards: string[];
+  around: number;
+}
+
+export function peek(session: Session): Peek {
+  const waiting = session.peekInject();
+  return { nick: session.nick, connected: session.irc.isRegistered, shared: session.shared, waiting: waiting.length, kinds: [...new Set(waiting.map((i) => i.kind))], cards: [...session.cards], around: session.roster().length };
+}
+
+/** One short status-line segment, e.g. "trough ⚑2 steer · shared · 3 around". */
+export function statusSegment(p: Peek): string {
+  const parts = [p.connected ? "trough" : "trough (offline)"];
+  if (p.waiting) parts[0] += ` ⚑${p.waiting} ${p.kinds.join("/")}`;
+  parts.push(p.shared ? "shared" : "private");
+  if (p.around) parts.push(`${p.around} around`);
+  return parts.join(" · ");
+}
+
 /** Render queued items for injection into the model's context. */
 export function renderForModel(session: Session): string | undefined {
   const items = session.drainInject();
@@ -237,6 +263,10 @@ export async function runCommand(session: Session, line: string): Promise<string
       const r = await session.control(cmd);
       if (r?.data && typeof r.data.shared === "boolean") session.shared = r.data.shared;
       session.hello();
+      if (cmd === "unshare" && r?.data?.changed) {
+        const n = session.purgeChannelHistory();
+        return `${ackText(r)} Deleted ${n} of this session's lobby message(s) from the server's history.`;
+      }
       return ackText(r);
     }
     case "default-shared": {
@@ -289,6 +319,9 @@ async function handleLocal(session: Session, req: { op: string; line?: string; d
   switch (req.op) {
     case "drain":
       return { ok: true, text: "", inject: renderForModel(session) };
+    case "peek":
+      // Non-destructive: for status lines and other indicators.
+      return { ok: true, text: "", data: peek(session) };
     case "command":
       return { ok: true, text: await runCommand(session, req.line ?? "") };
     case "checkpoint": {

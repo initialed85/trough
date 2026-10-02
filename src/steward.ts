@@ -357,6 +357,7 @@ export class Steward {
     const d = msg.data ?? {};
     const since = str(d.since);
     if (since) return this.onCatchup(msg, audience, since);
+    if (d.recipes === true) return this.onRecipes(msg, audience);
     const cardId = str(d.card);
     if (cardId) {
       const v = this.store.view(cardId, audience);
@@ -371,6 +372,33 @@ export class Steward {
       re: msg.id,
       text: ranked.length ? ranked.map((r) => `${r.card.id}: ${r.card.title}`).join("; ") : none,
       data: { cards: ranked.map((r) => ({ ...this.withLive(r.card), score: r.score, why: r.why })), principal: this.principal },
+    });
+  }
+
+  /** Recipe search across this principal's visible cards: "how do I check X at site Y?" */
+  private onRecipes(msg: Received, audience: "owner" | "team"): void {
+    const d = msg.data ?? {};
+    const q = tokens(str(d.text) ?? msg.text ?? "");
+    const refs = expandRefs(arr<Ref>(d.refs).filter(isRef));
+    const hits = this.visibleCards(audience)
+      .flatMap((card) =>
+        card.recipes.map((r) => {
+          const words = tokens(`${r.purpose} ${r.command} ${r.gotchas ?? ""} ${r.preconditions ?? ""}`);
+          let score = [...q].filter((w) => words.has(w)).length * 3;
+          for (const ref of refs) if ([...(r.refs ?? []), ...card.refs].some((x) => sameRef(x, ref))) score += 10;
+          return { score, recipe: r, card: card.id, cardTitle: card.title };
+        }),
+      )
+      .filter((h) => h.score > 0 || (!q.size && !refs.length))
+      .sort((a, b) => b.score - a.score || b.recipe.at.localeCompare(a.recipe.at))
+      .slice(0, 8);
+    const text = hits.length ? `${hits.length} recipe(s) from ${this.principal}: ${hits.map((h) => h.recipe.purpose).join("; ")}` : `No matching recipes from ${this.principal}.`;
+    this.transport.send(msg.from, {
+      kind: "reply",
+      id: newId(),
+      re: msg.id,
+      text,
+      data: { principal: this.principal, recipes: hits.map((h) => ({ ...h.recipe, card: h.card, cardTitle: h.cardTitle, score: h.score })) },
     });
   }
 

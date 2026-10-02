@@ -8,6 +8,8 @@ import { callLocal, findSocket } from "./local.ts";
 interface HookInput {
   hook_event_name?: string;
   prompt?: string;
+  /** Both Claude Code and Codex send it; Codex runs hooks from its daemon, so ancestry can't find the session. */
+  cwd?: string;
 }
 
 /**
@@ -28,7 +30,7 @@ export async function runHook(stdin: string): Promise<string | undefined> {
   } catch {
     return undefined;
   }
-  const socket = findSocket();
+  const socket = findSocket(input.cwd);
   const event = input.hook_event_name ?? "";
   const cmd = event === "UserPromptSubmit" ? COMMAND_RE.exec(input.prompt ?? "") : null;
   if (cmd) {
